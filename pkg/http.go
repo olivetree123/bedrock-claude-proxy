@@ -3,9 +3,10 @@ package pkg
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"io"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 type HttpConfig struct {
@@ -79,7 +80,8 @@ func (this *HTTPService) ResponseSSE(writer http.ResponseWriter, queue <-chan IS
 	writer.Header().Set("Connection", "keep-alive")
 
 	for event := range queue {
-		_, err := writer.Write(NewSSERaw(event))
+		raw := NewSSERaw(event)
+		_, err := writer.Write(raw)
 		if err != nil {
 			Log.Error(err)
 			continue
@@ -143,17 +145,19 @@ func (this *HTTPService) HandleComplete(writer http.ResponseWriter, request *htt
 
 func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
+		Log.Errorf("Method not allowed: %s", request.Method)
 		this.ResponseError(fmt.Errorf("method not allowed"), writer)
 		return
 	}
 	if request.Header.Get("Content-Type") != "application/json" {
+		Log.Errorf("Invalid content type: %s", request.Header.Get("Content-Type"))
 		this.ResponseError(fmt.Errorf("invalid content type"), writer)
 		return
 	}
-
 	// 读取请求 body
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
+		Log.Error(err)
 		this.ResponseError(fmt.Errorf("Error reading request body"), writer)
 		return
 	}
@@ -163,9 +167,11 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 	var req ClaudeMessageCompletionRequest
 	err = json.Unmarshal(body, &req)
 	if err != nil {
+		Log.Error(err)
 		this.ResponseError(err, writer)
 		return
 	}
+	// fmt.Printf("Request: %+v", req)
 	// get anthropic-version,x-api-key from request
 	anthropicVersion := request.Header.Get("anthropic-version")
 	if len(anthropicVersion) > 0 {
@@ -173,7 +179,7 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 	}
 	//anthropicKey := request.Header.Get("x-api-key")
 
-	Log.Debug(string(body))
+	// Log.Debug(string(body))
 	for _, msg := range req.Messages {
 		Log.Debugf("%+v", msg)
 	}
@@ -197,15 +203,14 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 // APIKeyMiddleware 验证 API Key 的中间件
 func (this *HTTPService) APIKeyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		Log.Debug("APIKeyMiddleware")
+		Log.Infof("Request URL Path: %s", request.URL.Path)
+		// Log.Debug("APIKeyMiddleware")
 		APIKey := this.conf.APIKey
-		Log.Debugf("APIKeyMiddleware: %s", APIKey)
 		if APIKey == "" {
 			next.ServeHTTP(writer, request)
 			return
 		}
 		apiKey := request.Header.Get("x-api-key")
-		Log.Debugf("API key in header: %s", apiKey)
 		if apiKey == "" {
 			this.ResponseError(fmt.Errorf("invalid api key"), writer)
 			return

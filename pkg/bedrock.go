@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"io"
 	"log"
 	"net/http"
@@ -22,16 +21,19 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	bedrock "github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 type BedrockConfig struct {
 	AccessKey                string            `json:"access_key"`
 	SecretKey                string            `json:"secret_key"`
 	Region                   string            `json:"region"`
+	RoleARN                  string            `json:"role_arn,omitempty"`
 	AnthropicVersionMappings map[string]string `json:"anthropic_version_mappings"`
 	ModelMappings            map[string]string `json:"model_mappings"`
 	AnthropicDefaultModel    string            `json:"anthropic_default_model"`
@@ -39,7 +41,7 @@ type BedrockConfig struct {
 	EnableComputerUse        bool              `json:"enable_computer_use"`
 	EnableOutputReason       bool              `json:"enable_output_reasoning"`
 	ReasonBudgetTokens       int               `json:"reason_budget_tokens"`
-	DEBUG 					 bool              `json:"debug,omitempty"`
+	DEBUG                    bool              `json:"debug,omitempty"`
 }
 
 func (this *BedrockConfig) GetInvokeEndpoint(modelId string) string {
@@ -77,6 +79,7 @@ func LoadBedrockConfigWithEnv() *BedrockConfig {
 		AccessKey:                os.Getenv("AWS_BEDROCK_ACCESS_KEY"),
 		SecretKey:                os.Getenv("AWS_BEDROCK_SECRET_KEY"),
 		Region:                   os.Getenv("AWS_BEDROCK_REGION"),
+		RoleARN:                  os.Getenv("AWS_BEDROCK_ROLE_ARN"),
 		ModelMappings:            ParseMappingsFromStr(os.Getenv("AWS_BEDROCK_MODEL_MAPPINGS")),
 		AnthropicVersionMappings: ParseMappingsFromStr(os.Getenv("AWS_BEDROCK_ANTHROPIC_VERSION_MAPPINGS")),
 		AnthropicDefaultModel:    os.Getenv("AWS_BEDROCK_ANTHROPIC_DEFAULT_MODEL"),
@@ -93,8 +96,7 @@ func LoadBedrockConfigWithEnv() *BedrockConfig {
 		}
 	}
 
-
-	return config;
+	return config
 }
 
 type BedrockClient struct {
@@ -145,20 +147,26 @@ type ClaudeMessageCompletionRequestContentSource struct {
 }
 
 type ClaudeMessageCompletionRequestContent struct {
-	Type      string                                       `json:"type,omitempty"`
-	Name      string                                       `json:"name,omitempty"`
-	Id        string                                       `json:"id,omitempty"`
-	Text      string                                       `json:"text,omitempty"`
-	ToolUseID string                                       `json:"tool_use_id,omitempty"`
-	IsError   string                                       `json:"is_error,omitempty"`
-	Source    *ClaudeMessageCompletionRequestContentSource `json:"source,omitempty"`
-	Content   json.RawMessage                              `json:"content,omitempty"`
+	Type   string                                       `json:"type,omitempty"`
+	Text   string                                       `json:"text,omitempty"`
+	Source *ClaudeMessageCompletionRequestContentSource `json:"source,omitempty"`
+	// thinking
+	Thinking  string `json:"thinking,omitempty"`
+	Signature string `json:"signature,omitempty"`
+	// tool_calls
+	Id        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     any             `json:"input,omitempty"`
+	Content   json.RawMessage `json:"content,omitempty"`
+	ToolUseID string          `json:"tool_use_id,omitempty"`
+	IsError   string          `json:"is_error,omitempty"`
 }
 
 type ClaudeMessageCompletionRequestMessage struct {
-	Role    string          `json:"role,omitempty"`
-	Content json.RawMessage `json:"content,omitempty"`
-	Text    string          `json:"text,omitempty"`
+	Role string `json:"role,omitempty"`
+	// Content json.RawMessage `json:"content,omitempty"`
+	Content []ClaudeMessageCompletionRequestContent `json:"content,omitempty"`
+	Text    string                                  `json:"text,omitempty"`
 }
 
 type ClaudeMessageCompletionRequestMetadata struct {
@@ -183,18 +191,19 @@ type ClaudeMessageCompletionRequestTools struct {
 }
 
 type ClaudeMessageCompletionRequest struct {
-	Temperature      float64                                  `json:"temperature,omitempty"`
-	StopSequences    []string                                 `json:"stop_sequences,omitempty"`
-	TopP             float64                                  `json:"top_p,omitempty"`
-	TopK             int                                      `json:"top_k,omitempty"`
-	Stream           bool                                     `json:"-"`
-	Model            string                                   `json:"-"`
-	AnthropicVersion string                                   `json:"anthropic_version,omitempty"`
-	MaxToken         int                                      `json:"max_tokens,omitempty"`
-	System           string                                   `json:"system,omitempty"`
-	Messages         []*ClaudeMessageCompletionRequestMessage `json:"messages,omitempty"`
-	Metadata         *ClaudeMessageCompletionRequestMetadata  `json:"-"`
-	Tools            []*ClaudeMessageCompletionRequestTools   `json:"tools,omitempty"`
+	Temperature      float64  `json:"temperature,omitempty"`
+	StopSequences    []string `json:"stop_sequences,omitempty"`
+	TopP             float64  `json:"top_p,omitempty"`
+	TopK             int      `json:"top_k,omitempty"`
+	Stream           bool     `json:"-"`
+	Model            string   `json:"-"`
+	AnthropicVersion string   `json:"anthropic_version,omitempty"`
+	MaxToken         int      `json:"max_tokens,omitempty"`
+	// System           string                                   `json:"system,omitempty"`
+	System   []ClaudeMessageCompletionRequestContent  `json:"system,omitempty"`
+	Messages []*ClaudeMessageCompletionRequestMessage `json:"messages,omitempty"`
+	Metadata *ClaudeMessageCompletionRequestMetadata  `json:"-"`
+	Tools    []*ClaudeMessageCompletionRequestTools   `json:"tools,omitempty"`
 }
 
 func (this *ClaudeMessageCompletionRequest) UnmarshalJSON(data []byte) error {
@@ -458,7 +467,7 @@ func (l loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 func NewBedrockClient(config *BedrockConfig) *BedrockClient {
 	staticProvider := credentials.NewStaticCredentialsProvider(config.AccessKey, config.SecretKey, "")
 
-	opt := []func(*awsConfig.LoadOptions)error {
+	opt := []func(*awsConfig.LoadOptions) error{
 		awsConfig.WithRegion(config.Region),
 		awsConfig.WithCredentialsProvider(staticProvider),
 	}
@@ -472,16 +481,53 @@ func NewBedrockClient(config *BedrockConfig) *BedrockClient {
 		opt = append(opt, awsConfig.WithHTTPClient(httpClient))
 	}
 
+	if config.RoleARN == "" {
+		bedrockClient := bedrock.New(bedrock.Options{
+			Region:      config.Region,
+			Credentials: aws.NewCredentialsCache(staticProvider),
+		})
+		return &BedrockClient{
+			config: config,
+			client: bedrockClient,
+		}
+	}
 
 	cfg, err := awsConfig.LoadDefaultConfig(context.TODO(), opt...)
+	if err != nil {
+		log.Fatalf("unable to load SDK config, %v", err)
+	}
 
+	// ===== assume role ======
+	stsSvc := sts.NewFromConfig(cfg)
+
+	// Assume role
+	input := &sts.AssumeRoleInput{
+		RoleArn:         aws.String(config.RoleARN),
+		RoleSessionName: aws.String("bedrockruntime-session"),
+	}
+	result, err := stsSvc.AssumeRole(context.TODO(), input)
+	if err != nil {
+		log.Fatalf("unable to load SDK config, %v", err)
+	}
+	// Use assumed role to create new credentials
+	assumedCreds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
+		*result.Credentials.AccessKeyId,
+		*result.Credentials.SecretAccessKey,
+		*result.Credentials.SessionToken,
+	))
+
+	bedrockCfg, err := awsConfig.LoadDefaultConfig(
+		context.TODO(),
+		awsConfig.WithRegion(config.Region),
+		awsConfig.WithCredentialsProvider(assumedCreds),
+	)
 	if err != nil {
 		log.Fatalf("unable to load SDK config, %v", err)
 	}
 
 	return &BedrockClient{
 		config: config,
-		client: bedrock.NewFromConfig(cfg),
+		client: bedrock.NewFromConfig(bedrockCfg),
 	}
 }
 
@@ -531,6 +577,7 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 		}
 
 		wrapper["anthropic_version"] = this.config.AnthropicDefaultVersion
+		delete(wrapper, "cache_control")
 		delete(wrapper, "model")
 		delete(wrapper, "stream")
 
@@ -549,7 +596,6 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 		if err != nil {
 			return request, false, err
 		}
-
 
 		bodyBuff = *bytes.NewBuffer(newBody)
 
@@ -576,7 +622,7 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 
 	bedrockRuntimeEndPoint := fmt.Sprintf(`https://bedrock-runtime.%s.amazonaws.com/model/%s/invoke`, this.config.Region, url.QueryEscape(Model))
 	if isStream {
-		bedrockRuntimeEndPoint = fmt.Sprintf(`https://bedrock-runtime.%s.amazonaws.com/model/%s/invoke-with-response-stream`, this.config.Region,url.QueryEscape(Model))
+		bedrockRuntimeEndPoint = fmt.Sprintf(`https://bedrock-runtime.%s.amazonaws.com/model/%s/invoke-with-response-stream`, this.config.Region, url.QueryEscape(Model))
 	}
 
 	preSignReq, err := http.NewRequest("POST", bedrockRuntimeEndPoint, cloneReq.Body)
@@ -613,8 +659,8 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 }
 
 type RawAWSBedrockEvent struct {
-	Bytes    string `json:"bytes"`
-	P        string `json:"p"`
+	Bytes string `json:"bytes"`
+	P     string `json:"p"`
 }
 
 func (this *RawAWSBedrockEvent) GetRawChunk() (string, string) {
@@ -706,7 +752,6 @@ func (this *BedrockClient) handleBedrockStream(w http.ResponseWriter, res *http.
 			Log.Infof("handleBedrockStreamRaw: %s\n", string(msg.Payload))
 		}
 
-
 		if isJSONEncoded {
 			// 查找事件类型和内容 (需要根据EventStream具体格式进一步解析)
 			// 简化示例: 假设数据是JSON格式
@@ -717,10 +762,8 @@ func (this *BedrockClient) handleBedrockStream(w http.ResponseWriter, res *http.
 		}
 	}
 
-
 	return nil
 }
-
 
 func (this *BedrockClient) HandleProxy(w http.ResponseWriter, r *http.Request) {
 	cloneReq, isStream, err := this.SignRequest(r)
@@ -757,7 +800,6 @@ func (this *BedrockClient) HandleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	httpClient := http.DefaultClient
 	if this.config.DEBUG {
 		httpClient = &http.Client{
@@ -780,12 +822,11 @@ func (this *BedrockClient) HandleProxy(w http.ResponseWriter, r *http.Request) {
 	for k, v := range resp.Header {
 		w.Header()[k] = v
 	}
-	_,err = io.Copy(w, resp.Body)
+	_, err = io.Copy(w, resp.Body)
 	if err != nil {
 		Log.Error(err)
 	}
 }
-
 
 func (this *BedrockClient) CompleteText(req *ClaudeTextCompletionRequest) (IStreamableResponse, error) {
 	modelId := req.Model
@@ -902,7 +943,7 @@ func (this *BedrockClient) MessageCompletion(req *ClaudeMessageCompletionRequest
 		return nil, err
 	}
 
-	Log.Debugf("Request: %s", string(body))
+	// Log.Debugf("Request: %s", string(body))
 	Log.Debugf("Request Model ID: %s", modelId)
 
 	if req.Stream {

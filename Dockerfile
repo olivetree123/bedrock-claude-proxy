@@ -19,7 +19,7 @@ RUN go version \
 
 
 ######## Start a new stage from scratch #######
-FROM alpine:latest
+FROM golang:1.19-alpine
 
 RUN apk add --update libintl \
     && apk add --no-cache ca-certificates tzdata dumb-init \
