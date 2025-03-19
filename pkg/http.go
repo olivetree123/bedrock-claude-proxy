@@ -266,7 +266,7 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 						}
 
 						// 记录使用情况
-						if err := LogAPIUsage(this.db, apiKeyName, apiKeyValue, modelName,
+						if err := models.CreateUsage(this.db, apiKeyName, apiKeyValue, modelName,
 							inputTokens, outputTokens); err != nil {
 							log.Logger.Errorf("Failed to log API usage: %v", err)
 						} else {
@@ -356,6 +356,11 @@ func (this *HTTPService) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	handler(w, r)
 }
 
+func (this *HTTPService) ListUsage(w http.ResponseWriter, r *http.Request) {
+	handler := api.ListUsage(this.db)
+	handler(w, r)
+}
+
 func (this *HTTPService) AdminMiddleware(next http.Handler) http.Handler {
 	return api.AdminMiddleware(this.db)(next)
 }
@@ -373,6 +378,7 @@ func (this *HTTPService) Start() {
 	adminRouter.HandleFunc("/apikey/create", this.CreateAPIKey)
 	adminRouter.HandleFunc("/apikey/{id}/delete", this.DeleteAPIKey)
 	adminRouter.HandleFunc("/apikey/list", this.ListAPIKeys)
+	adminRouter.HandleFunc("/usage/list", this.ListUsage)
 
 	// 需要 API Key 的路由
 	apiRouter := rHandler.PathPrefix("/v1").Subrouter()

@@ -151,3 +151,56 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 Thank you for using `AWS Bedrock Claude Proxy`. We hope it makes your integration process smoother and more efficient!
+
+# Bedrock Claude 代理管理工具
+
+这是一个用于管理 Bedrock Claude 代理的命令行工具，支持管理API密钥和查看使用情况。
+
+## 安装依赖
+
+```bash
+pip install click requests tabulate
+```
+
+## 使用方法
+
+### 创建API密钥
+
+```bash
+python bedrock_admin.py create_apikey --name my_api_key
+```
+
+### 删除API密钥
+
+```bash
+python bedrock_admin.py delete_apikey --id 1
+```
+
+### 列出API密钥
+
+```bash
+python bedrock_admin.py list_apikey
+```
+
+### 查询使用记录
+
+基本查询：
+```bash
+python bedrock_admin.py list_usage
+```
+
+分页：
+```bash
+python bedrock_admin.py list_usage --page 2 --page-size 10
+```
+
+过滤条件：
+```bash
+python bedrock_admin.py list_usage --apikey my_key --model claude-3 --start 2023-01-01 --end 2023-12-31
+```
+
+输出格式：
+```bash
+python bedrock_admin.py list_usage --format json --output usage.json
+```
+
