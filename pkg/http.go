@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	log "bedrock-claude-proxy/log"
 
@@ -23,8 +24,10 @@ type HttpConfig struct {
 }
 
 type HTTPService struct {
-	conf *Config
-	db   *gorm.DB
+	conf        *Config
+	db          *gorm.DB
+	apiKeyCache map[string]*models.APIKey
+	cacheMutex  sync.RWMutex
 }
 
 type APIError struct {
@@ -54,10 +57,13 @@ func NewHttpService(conf *Config) *HTTPService {
 		log.Logger.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	return &HTTPService{
-		conf: conf,
-		db:   db,
+	service := &HTTPService{
+		conf:        conf,
+		db:          db,
+		apiKeyCache: make(map[string]*models.APIKey),
 	}
+
+	return service
 }
 
 func (this *HTTPService) RedirectSwagger(writer http.ResponseWriter, request *http.Request) {
@@ -251,10 +257,9 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 						apiKeyValue := request.Header.Get("x-api-key")
 						apiKeyName := "default"
 
-						// 查询API密钥名称
+						// 查询API密钥名称 - 使用缓存
 						if apiKeyValue != "" {
-							var apiKey models.APIKey
-							if err := this.db.Where("value = ?", apiKeyValue).First(&apiKey).Error; err == nil {
+							if apiKey, err := this.getAPIKeyFromCache(apiKeyValue); err == nil {
 								apiKeyName = apiKey.Name
 							}
 						}
@@ -286,10 +291,9 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 		apiKeyValue := request.Header.Get("x-api-key")
 		apiKeyName := "default"
 
-		// 查询API密钥名称
+		// 查询API密钥名称 - 使用缓存
 		if apiKeyValue != "" {
-			var apiKey models.APIKey
-			if err := this.db.Where("value = ?", apiKeyValue).First(&apiKey).Error; err == nil {
+			if apiKey, err := this.getAPIKeyFromCache(apiKeyValue); err == nil {
 				apiKeyName = apiKey.Name
 			}
 		}
@@ -308,26 +312,63 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 func (this *HTTPService) APIKeyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		log.Logger.Infof("Request URL Path: %s", request.URL.Path)
-		// log.Logger.Debug("APIKeyMiddleware")
-		APIKey := this.conf.APIKey
-		if APIKey == "" {
-			next.ServeHTTP(writer, request)
+
+		apiKeyValue := request.Header.Get("x-api-key")
+		if apiKeyValue == "" {
+			this.ResponseError(fmt.Errorf("invalid api key"), writer)
 			return
 		}
-		apiKey := request.Header.Get("x-api-key")
-		if apiKey == "" {
+
+		// 使用缓存检查API Key
+		apiKey, err := this.getAPIKeyFromCache(apiKeyValue)
+		if err != nil {
 			this.ResponseError(fmt.Errorf("invalid api key"), writer)
 			return
 		}
 
 		// 这里可以添加更多的 API Key 验证逻辑
-		if apiKey != APIKey {
-			this.ResponseError(fmt.Errorf("Invalid API key"), writer)
+		if apiKey.Value != apiKeyValue {
+			this.ResponseError(fmt.Errorf("invalid api key"), writer)
 			return
 		}
 
 		next.ServeHTTP(writer, request)
 	})
+}
+
+// getAPIKeyFromCache 从缓存中获取API Key，如果不存在则从数据库中获取并缓存
+func (this *HTTPService) getAPIKeyFromCache(value string) (*models.APIKey, error) {
+	// 尝试从缓存中读取
+	this.cacheMutex.RLock()
+	cachedKey, exists := this.apiKeyCache[value]
+	this.cacheMutex.RUnlock()
+
+	// 如果存在，直接返回
+	if exists {
+		return cachedKey, nil
+	}
+
+	// 缓存不存在，从数据库获取
+	apiKey, err := models.GetAPIKey(this.db, value)
+	if err != nil {
+		return nil, err
+	}
+
+	// 更新缓存
+	this.cacheMutex.Lock()
+	this.apiKeyCache[value] = &apiKey
+	this.cacheMutex.Unlock()
+
+	return &apiKey, nil
+}
+
+// 从缓存中移除API Key
+func (this *HTTPService) refreshAPIKeyCache(value string) {
+	this.cacheMutex.Lock()
+	defer this.cacheMutex.Unlock()
+
+	// 从缓存中删除该API Key，下次请求时会重新从数据库加载
+	delete(this.apiKeyCache, value)
 }
 
 func (this *HTTPService) HandleAdminLogin(w http.ResponseWriter, r *http.Request) {
@@ -341,8 +382,26 @@ func (this *HTTPService) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (this *HTTPService) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	handler := api.DeleteAPIKey(this.db)
-	handler(w, r)
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	// 先获取要删除的API Key值
+	var apiKey models.APIKey
+	if err := this.db.First(&apiKey, id).Error; err == nil {
+		// 记住API Key值
+		keyValue := apiKey.Value
+
+		// 执行删除
+		handler := api.DeleteAPIKey(this.db)
+		handler(w, r)
+
+		// 从缓存中移除
+		this.refreshAPIKeyCache(keyValue)
+	} else {
+		// 如果找不到API Key，仍然执行原始处理程序
+		handler := api.DeleteAPIKey(this.db)
+		handler(w, r)
+	}
 }
 
 func (this *HTTPService) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
