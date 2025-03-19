@@ -1,22 +1,30 @@
 package pkg
 
 import (
+	"bedrock-claude-proxy/api"
+	"bedrock-claude-proxy/models"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 
+	log "bedrock-claude-proxy/log"
+
 	"github.com/gorilla/mux"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type HttpConfig struct {
 	Listen  string `json:"listen,omitempty"`
 	WebRoot string `json:"web_root,omitempty"`
 	APIKey  string `json:"api_key,omitempty"`
+	DBPath  string `json:"db_path,omitempty"`
 }
 
 type HTTPService struct {
 	conf *Config
+	db   *gorm.DB
 }
 
 type APIError struct {
@@ -30,8 +38,25 @@ type APIStandardError struct {
 }
 
 func NewHttpService(conf *Config) *HTTPService {
+	// 初始化数据库
+	dbPath := conf.DBPath
+	if dbPath == "" {
+		dbPath = "bedrock.db"
+	}
+
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		log.Logger.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	// 初始化数据库模型和默认数据
+	if err := InitDB(db); err != nil {
+		log.Logger.Fatalf("Failed to initialize database: %v", err)
+	}
+
 	return &HTTPService{
 		conf: conf,
+		db:   db,
 	}
 }
 
@@ -83,7 +108,7 @@ func (this *HTTPService) ResponseSSE(writer http.ResponseWriter, queue <-chan IS
 		raw := NewSSERaw(event)
 		_, err := writer.Write(raw)
 		if err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 			continue
 		}
 		flusher.Flush()
@@ -132,7 +157,7 @@ func (this *HTTPService) HandleComplete(writer http.ResponseWriter, request *htt
 		for event := range response.GetEvents() {
 			_, err = writer.Write(NewSSERaw(event))
 			if err != nil {
-				Log.Error(err)
+				log.Logger.Error(err)
 				continue
 			}
 			flusher.Flush()
@@ -145,19 +170,19 @@ func (this *HTTPService) HandleComplete(writer http.ResponseWriter, request *htt
 
 func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
-		Log.Errorf("Method not allowed: %s", request.Method)
+		log.Logger.Errorf("Method not allowed: %s", request.Method)
 		this.ResponseError(fmt.Errorf("method not allowed"), writer)
 		return
 	}
 	if request.Header.Get("Content-Type") != "application/json" {
-		Log.Errorf("Invalid content type: %s", request.Header.Get("Content-Type"))
+		log.Logger.Errorf("Invalid content type: %s", request.Header.Get("Content-Type"))
 		this.ResponseError(fmt.Errorf("invalid content type"), writer)
 		return
 	}
 	// 读取请求 body
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		this.ResponseError(fmt.Errorf("Error reading request body"), writer)
 		return
 	}
@@ -167,7 +192,7 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 	var req ClaudeMessageCompletionRequest
 	err = json.Unmarshal(body, &req)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		this.ResponseError(err, writer)
 		return
 	}
@@ -179,9 +204,9 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 	}
 	//anthropicKey := request.Header.Get("x-api-key")
 
-	// Log.Debug(string(body))
+	// log.Logger.Debug(string(body))
 	for _, msg := range req.Messages {
-		Log.Debugf("%+v", msg)
+		log.Logger.Debugf("%+v", msg)
 	}
 
 	bedrockClient := NewBedrockClient(this.conf.BedrockConfig)
@@ -192,9 +217,94 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 	}
 
 	if response.IsStream() {
-		// output & flush SSE
-		this.ResponseSSE(writer, response.GetEvents())
+		// 创建一个新的通道来拦截事件
+		eventQueue := make(chan ISSEDecoder, 10)
+		go func() {
+			defer close(eventQueue)
+
+			// var lastEvent *ClaudeMessageCompletionStreamEvent
+			var inputTokens, outputTokens int
+			var modelName string
+			var usageRecorded bool = false
+
+			// 从原始通道读取事件
+			for event := range response.GetEvents() {
+				// 传递给新通道
+				eventQueue <- event
+
+				// 尝试将事件转换为特定类型以检查 usage 信息
+				if streamEvent, ok := event.(*ClaudeMessageCompletionStreamEvent); ok {
+					// lastEvent = streamEvent
+					eventType := streamEvent.GetEvent()
+
+					// 记录模型名称
+					if streamEvent.Model != "" {
+						modelName = streamEvent.Model
+					}
+
+					// 收集输入和输出token信息
+					if eventType == "message_start" && streamEvent.Message != nil && streamEvent.Message.Usage != nil {
+						inputTokens = streamEvent.Message.Usage.InputTokens
+						log.Logger.Infof("Stream Usage - Input Tokens: %d", inputTokens)
+					} else if eventType == "message_delta" && streamEvent.Usage != nil {
+						if streamEvent.Usage.OutputTokens > outputTokens {
+							outputTokens = streamEvent.Usage.OutputTokens
+						}
+						log.Logger.Infof("Stream Usage - Output Tokens: %d", outputTokens)
+					} else if (eventType == "message_stop" || eventType == "content_block_stop") && !usageRecorded &&
+						inputTokens > 0 && outputTokens > 0 {
+						// 记录API使用情况
+						apiKeyValue := request.Header.Get("x-api-key")
+						apiKeyName := "default"
+
+						// 查询API密钥名称
+						if apiKeyValue != "" {
+							var apiKey models.APIKey
+							if err := this.db.Where("value = ?", apiKeyValue).First(&apiKey).Error; err == nil {
+								apiKeyName = apiKey.Name
+							}
+						}
+
+						// 记录使用情况
+						if err := LogAPIUsage(this.db, apiKeyName, apiKeyValue, modelName,
+							inputTokens, outputTokens); err != nil {
+							log.Logger.Errorf("Failed to log API usage: %v", err)
+						} else {
+							usageRecorded = true
+							log.Logger.Infof("API usage recorded - Input: %d, Output: %d", inputTokens, outputTokens)
+						}
+					}
+				}
+			}
+		}()
+
+		// 使用拦截后的通道进行响应
+		this.ResponseSSE(writer, eventQueue)
 		return
+	}
+
+	// 打印出 usage 信息
+	if resp, ok := response.GetResponse().(*ClaudeMessageCompletionResponse); ok && resp.Usage != nil {
+		log.Logger.Infof("Usage - Input Tokens: %d, Output Tokens: %d",
+			resp.Usage.InputTokens, resp.Usage.OutputTokens)
+
+		// 记录API使用情况
+		apiKeyValue := request.Header.Get("x-api-key")
+		apiKeyName := "default"
+
+		// 查询API密钥名称
+		if apiKeyValue != "" {
+			var apiKey models.APIKey
+			if err := this.db.Where("value = ?", apiKeyValue).First(&apiKey).Error; err == nil {
+				apiKeyName = apiKey.Name
+			}
+		}
+
+		// 记录使用情况
+		if err := LogAPIUsage(this.db, apiKeyName, apiKeyValue, resp.Model,
+			resp.Usage.InputTokens, resp.Usage.OutputTokens); err != nil {
+			log.Logger.Errorf("Failed to log API usage: %v", err)
+		}
 	}
 
 	this.ResponseJSON(response.GetResponse(), writer)
@@ -203,8 +313,8 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 // APIKeyMiddleware 验证 API Key 的中间件
 func (this *HTTPService) APIKeyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		Log.Infof("Request URL Path: %s", request.URL.Path)
-		// Log.Debug("APIKeyMiddleware")
+		log.Logger.Infof("Request URL Path: %s", request.URL.Path)
+		// log.Logger.Debug("APIKeyMiddleware")
 		APIKey := this.conf.APIKey
 		if APIKey == "" {
 			next.ServeHTTP(writer, request)
@@ -226,8 +336,43 @@ func (this *HTTPService) APIKeyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (this *HTTPService) HandleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	handler := api.AdminLogin(this.db)
+	handler(w, r)
+}
+
+func (this *HTTPService) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	handler := api.CreateAPIKey(this.db)
+	handler(w, r)
+}
+
+func (this *HTTPService) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
+	handler := api.DeleteAPIKey(this.db)
+	handler(w, r)
+}
+
+func (this *HTTPService) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	handler := api.ListAPIKeys(this.db)
+	handler(w, r)
+}
+
+func (this *HTTPService) AdminMiddleware(next http.Handler) http.Handler {
+	return api.AdminMiddleware(this.db)(next)
+}
+
 func (this *HTTPService) Start() {
 	rHandler := mux.NewRouter()
+
+	// 管理员登录
+	mainRouter := rHandler.PathPrefix("/").Subrouter()
+	mainRouter.HandleFunc("/login/admin", this.HandleAdminLogin)
+
+	// 需要管理员权限的路由
+	adminRouter := rHandler.PathPrefix("/admin").Subrouter()
+	adminRouter.Use(this.AdminMiddleware)
+	adminRouter.HandleFunc("/apikey/create", this.CreateAPIKey)
+	adminRouter.HandleFunc("/apikey/{id}/delete", this.DeleteAPIKey)
+	adminRouter.HandleFunc("/apikey/list", this.ListAPIKeys)
 
 	// 需要 API Key 的路由
 	apiRouter := rHandler.PathPrefix("/v1").Subrouter()
@@ -241,10 +386,10 @@ func (this *HTTPService) Start() {
 		http.FileServer(http.Dir(fmt.Sprintf("%s", this.conf.WebRoot)))))
 	rHandler.NotFoundHandler = http.HandlerFunc(this.NotFoundHandle)
 
-	Log.Info("http service starting")
-	Log.Infof("Please open http://%s\n", this.conf.Listen)
+	log.Logger.Info("http service starting")
+	log.Logger.Infof("Please open http://%s\n", this.conf.Listen)
 	err := http.ListenAndServe(this.conf.Listen, rHandler)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 	}
 }

@@ -1,11 +1,12 @@
-package pkg
+package log
 
 import (
-	"github.com/op/go-logging"
 	"os"
+
+	"github.com/op/go-logging"
 )
 
-var Log = logging.MustGetLogger("BedrockProxy")
+var Logger = logging.MustGetLogger("BedrockProxy")
 
 func init() {
 	format := logging.MustStringFormatter(

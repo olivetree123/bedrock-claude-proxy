@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	log "bedrock-claude-proxy/log"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -35,14 +36,14 @@ func (this *Config) MarginWithENV() {
 func (c *Config) load(filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return err
 	}
 	defer file.Close()
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(c)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 	}
 	return err
 }
@@ -60,18 +61,18 @@ func (c *Config) ToJSON() (string, error) {
 func (c *Config) Save(saveAs string) error {
 	file, err := os.Create(saveAs)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return err
 	}
 	defer file.Close()
 	data, err := json.MarshalIndent(c, "", "    ")
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return err
 	}
 	_, err = file.Write(data)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 	}
 	return err
 }

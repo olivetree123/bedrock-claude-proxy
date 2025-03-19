@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -18,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	log "bedrock-claude-proxy/log"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream"
@@ -444,7 +445,7 @@ type loggingRoundTripper struct {
 func (l loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// 记录请求
 	reqDump, _ := httputil.DumpRequestOut(req, true)
-	Log.Infof("Request:\n%s", string(reqDump))
+	log.Logger.Infof("Request:\n%s", string(reqDump))
 
 	// 发送请求
 	resp, err := l.wrapped.RoundTrip(req)
@@ -454,7 +455,7 @@ func (l loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 
 	// 记录响应
 	respDump, _ := httputil.DumpResponse(resp, true)
-	Log.Infof("Response:\n%s", string(respDump))
+	log.Logger.Infof("Response:\n%s", string(respDump))
 
 	// 重要：我们需要重新创建响应体，因为 DumpResponse 会消耗它
 	bodyBytes, _ := io.ReadAll(resp.Body)
@@ -494,7 +495,7 @@ func NewBedrockClient(config *BedrockConfig) *BedrockClient {
 
 	cfg, err := awsConfig.LoadDefaultConfig(context.TODO(), opt...)
 	if err != nil {
-		log.Fatalf("unable to load SDK config, %v", err)
+		log.Logger.Fatalf("unable to load SDK config, %v", err)
 	}
 
 	// ===== assume role ======
@@ -507,7 +508,7 @@ func NewBedrockClient(config *BedrockConfig) *BedrockClient {
 	}
 	result, err := stsSvc.AssumeRole(context.TODO(), input)
 	if err != nil {
-		log.Fatalf("unable to load SDK config, %v", err)
+		log.Logger.Fatalf("unable to load SDK config, %v", err)
 	}
 	// Use assumed role to create new credentials
 	assumedCreds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
@@ -522,7 +523,7 @@ func NewBedrockClient(config *BedrockConfig) *BedrockClient {
 		awsConfig.WithCredentialsProvider(assumedCreds),
 	)
 	if err != nil {
-		log.Fatalf("unable to load SDK config, %v", err)
+		log.Logger.Fatalf("unable to load SDK config, %v", err)
 	}
 
 	return &BedrockClient{
@@ -554,7 +555,7 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 		wrapper := make(map[string]interface{})
 		err := decoder.Decode(&wrapper)
 		if err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 			return request, false, err
 		}
 		if srcModel, ok := wrapper["model"]; ok {
@@ -565,7 +566,7 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 
 		Model, err = this.GetModelMappings(Model)
 		if err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 		} else {
 			wrapper["model"] = Model
 		}
@@ -627,7 +628,7 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 
 	preSignReq, err := http.NewRequest("POST", bedrockRuntimeEndPoint, cloneReq.Body)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return nil, false, err
 	}
 	preSignReq.Header = cloneReq.Header.Clone()
@@ -638,7 +639,7 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 	// 获取凭证
 	credentialList, err := cfg.Credentials.Retrieve(context.TODO())
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return nil, false, err
 	}
 
@@ -651,7 +652,7 @@ func (this *BedrockClient) SignRequest(request *http.Request) (*http.Request, bo
 		}
 	})
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return nil, false, err
 	}
 
@@ -666,7 +667,7 @@ type RawAWSBedrockEvent struct {
 func (this *RawAWSBedrockEvent) GetRawChunk() (string, string) {
 	jsonRaw, err := base64.StdEncoding.DecodeString(this.Bytes)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 	}
 
 	type EventTypeWrapper struct {
@@ -677,7 +678,7 @@ func (this *RawAWSBedrockEvent) GetRawChunk() (string, string) {
 
 	err = json.Unmarshal(jsonRaw, &eventType)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 	}
 
 	return eventType.Type, string(jsonRaw)
@@ -687,7 +688,7 @@ func AsClaudeEvent(line string) string {
 	decode := json.NewDecoder(strings.NewReader(line))
 	err := decode.Decode(&rawEvent)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return ""
 	}
 	eventType, raw := rawEvent.GetRawChunk()
@@ -709,10 +710,10 @@ func (this *BedrockClient) handleBedrockStream(w http.ResponseWriter, res *http.
 	isJSONEncoded := strings.Contains(BedrockContentType, "json")
 
 	if this.config.DEBUG {
-		Log.Infof("handleBedrockStream: %s", res.Header.Get("Content-Type"))
-		Log.Info("Response Header")
+		log.Logger.Infof("handleBedrockStream: %s", res.Header.Get("Content-Type"))
+		log.Logger.Info("Response Header")
 		for k, v := range res.Header {
-			Log.Infof("%s: %s\n", k, v)
+			log.Logger.Infof("%s: %s\n", k, v)
 		}
 	}
 
@@ -749,7 +750,7 @@ func (this *BedrockClient) handleBedrockStream(w http.ResponseWriter, res *http.
 		//}
 
 		if this.config.DEBUG {
-			Log.Infof("handleBedrockStreamRaw: %s\n", string(msg.Payload))
+			log.Logger.Infof("handleBedrockStreamRaw: %s\n", string(msg.Payload))
 		}
 
 		if isJSONEncoded {
@@ -768,7 +769,7 @@ func (this *BedrockClient) handleBedrockStream(w http.ResponseWriter, res *http.
 func (this *BedrockClient) HandleProxy(w http.ResponseWriter, r *http.Request) {
 	cloneReq, isStream, err := this.SignRequest(r)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -782,12 +783,12 @@ func (this *BedrockClient) HandleProxy(w http.ResponseWriter, r *http.Request) {
 		// 發送請求到目標服務器
 		if this.config.DEBUG {
 			reqDump, _ := httputil.DumpRequestOut(cloneReq, true)
-			Log.Infof("Request:\n%s", string(reqDump))
+			log.Logger.Infof("Request:\n%s", string(reqDump))
 		}
 
 		resp, err = http.DefaultClient.Do(cloneReq)
 		if err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 			w.Header().Set("Content-Type", "application/json")
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
@@ -795,7 +796,7 @@ func (this *BedrockClient) HandleProxy(w http.ResponseWriter, r *http.Request) {
 		defer resp.Body.Close()
 
 		if err := this.handleBedrockStream(w, resp); err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 		}
 		return
 	}
@@ -811,7 +812,7 @@ func (this *BedrockClient) HandleProxy(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := httpClient.Do(cloneReq)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -824,7 +825,7 @@ func (this *BedrockClient) HandleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = io.Copy(w, resp.Body)
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 	}
 }
 
@@ -843,7 +844,7 @@ func (this *BedrockClient) CompleteText(req *ClaudeTextCompletionRequest) (IStre
 	}
 	body, err := json.Marshal(req)
 	if err != nil {
-		Log.Errorf("Couldn't marshal the request: ", err)
+		log.Logger.Errorf("Couldn't marshal the request: ", err)
 		return nil, err
 	}
 
@@ -854,7 +855,7 @@ func (this *BedrockClient) CompleteText(req *ClaudeTextCompletionRequest) (IStre
 			ContentType: aws.String("application/json"),
 		})
 		if err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 			return nil, err
 		}
 
@@ -876,17 +877,17 @@ func (this *BedrockClient) CompleteText(req *ClaudeTextCompletionRequest) (IStre
 					var resp ClaudeTextCompletionStreamEvent
 					err := json.NewDecoder(bytes.NewReader(v.Value.Bytes)).Decode(&resp)
 					if err != nil {
-						Log.Error(err)
+						log.Logger.Error(err)
 						continue
 					}
 					resp.Raw = v.Value.Bytes
 					eventQueue <- &resp
 
 				case *types.UnknownUnionMember:
-					Log.Errorf("unknown tag:", v.Tag)
+					log.Logger.Errorf("unknown tag:", v.Tag)
 					continue
 				default:
-					Log.Errorf("union is nil or unknown type")
+					log.Logger.Errorf("union is nil or unknown type")
 					continue
 				}
 			}
@@ -901,7 +902,7 @@ func (this *BedrockClient) CompleteText(req *ClaudeTextCompletionRequest) (IStre
 		ContentType: aws.String("application/json"),
 	})
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return nil, err
 	}
 
@@ -909,7 +910,7 @@ func (this *BedrockClient) CompleteText(req *ClaudeTextCompletionRequest) (IStre
 		var resp ClaudeTextCompletionResponse
 		err = json.NewDecoder(bytes.NewReader(output.Body)).Decode(&resp)
 		if err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 			return nil, err
 		}
 		//Log.Debug(resp)
@@ -939,12 +940,12 @@ func (this *BedrockClient) MessageCompletion(req *ClaudeMessageCompletionRequest
 
 	body, err := json.Marshal(req)
 	if err != nil {
-		Log.Errorf("Couldn't marshal the request: ", err)
+		log.Logger.Errorf("Couldn't marshal the request: ", err)
 		return nil, err
 	}
 
 	// Log.Debugf("Request: %s", string(body))
-	Log.Debugf("Request Model ID: %s", modelId)
+	log.Logger.Debugf("Request Model ID: %s", modelId)
 
 	if req.Stream {
 		output, err := this.client.InvokeModelWithResponseStream(context.Background(), &bedrock.InvokeModelWithResponseStreamInput{
@@ -953,7 +954,7 @@ func (this *BedrockClient) MessageCompletion(req *ClaudeMessageCompletionRequest
 			ContentType: aws.String("application/json"),
 		})
 		if err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 			return nil, err
 		}
 
@@ -973,17 +974,17 @@ func (this *BedrockClient) MessageCompletion(req *ClaudeMessageCompletionRequest
 					var resp ClaudeMessageCompletionStreamEvent
 					err := json.NewDecoder(bytes.NewReader(v.Value.Bytes)).Decode(&resp)
 					if err != nil {
-						Log.Error(err)
+						log.Logger.Error(err)
 						continue
 					}
 					resp.Raw = v.Value.Bytes
 					eventQueue <- &resp
 
 				case *types.UnknownUnionMember:
-					Log.Errorf("unknown tag:", v.Tag)
+					log.Logger.Errorf("unknown tag:", v.Tag)
 					continue
 				default:
-					Log.Errorf("union is nil or unknown type")
+					log.Logger.Errorf("union is nil or unknown type")
 					continue
 				}
 			}
@@ -998,7 +999,7 @@ func (this *BedrockClient) MessageCompletion(req *ClaudeMessageCompletionRequest
 		ContentType: aws.String("application/json"),
 	})
 	if err != nil {
-		Log.Error(err)
+		log.Logger.Error(err)
 		return nil, err
 	}
 
@@ -1006,7 +1007,7 @@ func (this *BedrockClient) MessageCompletion(req *ClaudeMessageCompletionRequest
 		var resp ClaudeMessageCompletionResponse
 		err = json.NewDecoder(bytes.NewReader(output.Body)).Decode(&resp)
 		if err != nil {
-			Log.Error(err)
+			log.Logger.Error(err)
 			return nil, err
 		}
 		//Log.Debug(resp)

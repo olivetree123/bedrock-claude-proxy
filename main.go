@@ -1,6 +1,7 @@
 package main
 
 import (
+	log "bedrock-claude-proxy/log"
 	"bedrock-claude-proxy/pkg"
 	"flag"
 	"runtime"
@@ -24,7 +25,7 @@ func main() {
 	if len(*conf_path) > 0 {
 		conf, err = pkg.NewConfigFromLocal(*conf_path)
 		if err != nil {
-			pkg.Log.Error(err)
+			log.Logger.Error(err)
 			conf = &pkg.Config{}
 		}
 	} else {
@@ -33,8 +34,8 @@ func main() {
 
 	conf.MarginWithENV()
 
-	pkg.Log.Debug("show config detail:")
-	pkg.Log.Debug(conf.ToJSON())
+	log.Logger.Debug("show config detail:")
+	log.Logger.Debug(conf.ToJSON())
 
 	service := pkg.NewHttpService(conf)
 	service.Start()

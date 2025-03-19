@@ -102,13 +102,13 @@ func TestBedrockClient_MessageCompletionWithoutStream(t *testing.T) {
 	}
 
 	resp, err := client.MessageCompletion(&ClaudeMessageCompletionRequest{
-		Temperature:      0.5,
-		TopP:             1,
-		TopK:             5,
-		Stream:           false,
-		Model:            "claude-3-haiku-20240307",
-		MaxToken:         2048,
-		System:           "You are a helpful assistant.",
+		Temperature: 0.5,
+		TopP:        1,
+		TopK:        5,
+		Stream:      false,
+		Model:       "claude-3-haiku-20240307",
+		MaxToken:    2048,
+		// System:           "You are a helpful assistant.",
 		AnthropicVersion: "bedrock-2023-05-31",
 		Messages: []*ClaudeMessageCompletionRequestMessage{
 			&ClaudeMessageCompletionRequestMessage{
@@ -160,7 +160,7 @@ func TestBedrockClient_MessageCompletionWithStream(t *testing.T) {
 		AnthropicVersion: "bedrock-2023-05-31",
 		Messages: []*ClaudeMessageCompletionRequestMessage{
 			&ClaudeMessageCompletionRequestMessage{
-				Role: "user",
+				Role:    "user",
 				Content: bin,
 			},
 		},
@@ -222,7 +222,6 @@ func TestClaude_HandleProxyJSON(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	//req.Header.Set("Accept", "application/json")
 
-
 	// 創建一個響應記錄器
 	w := httptest.NewRecorder()
 
@@ -250,7 +249,6 @@ func TestClaude_HandleProxyStream(t *testing.T) {
 	req := httptest.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewBufferString(bodyJSON))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-
 
 	// 創建一個響應記錄器
 	w := httptest.NewRecorder()
