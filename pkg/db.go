@@ -11,7 +11,7 @@ import (
 // InitDB 初始化数据库，执行迁移操作
 func InitDB(db *gorm.DB) error {
 	// 自动迁移数据库模型
-	err := db.AutoMigrate(&models.Admin{}, &models.APIKey{}, &models.Log{})
+	err := db.AutoMigrate(&models.Admin{}, &models.APIKey{}, &models.Usage{})
 	if err != nil {
 		return err
 	}

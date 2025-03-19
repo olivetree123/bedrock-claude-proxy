@@ -8,14 +8,14 @@ import (
 
 // LogAPIUsage 记录API使用情况
 func LogAPIUsage(db *gorm.DB, apiKeyName, apiKeyValue, modelName string, inputTokens, outputTokens int) error {
-	log := models.Log{
+	log := models.Usage{
 		APIKeyName:  apiKeyName,
 		APIKeyValue: apiKeyValue,
 		ModelName:   modelName,
-		InputToken:  inputTokens,
-		OutputToken: outputTokens,
+		InputTokens: inputTokens,
+		OutputTokens: outputTokens,
 	}
-	
+
 	result := db.Create(&log)
 	return result.Error
-} 
+}

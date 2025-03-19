@@ -301,7 +301,7 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 		}
 
 		// 记录使用情况
-		if err := LogAPIUsage(this.db, apiKeyName, apiKeyValue, resp.Model,
+		if err := models.CreateUsage(this.db, apiKeyName, apiKeyValue, resp.Model,
 			resp.Usage.InputTokens, resp.Usage.OutputTokens); err != nil {
 			log.Logger.Errorf("Failed to log API usage: %v", err)
 		}
