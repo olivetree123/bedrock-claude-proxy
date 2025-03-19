@@ -6,6 +6,7 @@ Bedrock Claude 代理管理工具
 
 import sys
 import json
+import functools
 
 import click
 import requests
@@ -43,14 +44,12 @@ def login(username, password):
 
 def check_auth(func):
     """检查是否已登录的装饰器"""
+
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         if not config.token:
-            if not click.confirm("未登录，是否现在登录?"):
-                click.echo("需要先登录才能继续操作")
-                sys.exit(1)
-
-            username = click.prompt("请输入用户名", type=str, default="hello")
-            password = click.prompt("请输入密码", type=str, hide_input=True, default="123456")
+            username = "proxy"
+            password = "hello@autel.com"
 
             if not login(username, password):
                 sys.exit(1)
@@ -230,12 +229,11 @@ def list_usage(page, page_size, apikey, model, start, end, format, output):
                     item.get("model_name", ""),
                     item.get("input_tokens", 0),
                     item.get("output_tokens", 0),
-                    item.get("total_tokens", 0),
                     created_at
                 ])
 
             # 使用tabulate打印表格
-            headers = ["ID", "API密钥", "模型", "输入令牌", "输出令牌", "总令牌", "创建时间"]
+            headers = ["ID", "API密钥", "模型", "输入令牌", "输出令牌", "创建时间"]
             click.echo(f"总记录数: {total} (第{page}页，每页{page_size}条)")
             click.echo(tabulate(table_data, headers=headers, tablefmt="grid"))
     except Exception as e:

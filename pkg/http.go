@@ -224,7 +224,6 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 
 			// var lastEvent *ClaudeMessageCompletionStreamEvent
 			var inputTokens, outputTokens int
-			var modelName string
 			var usageRecorded bool = false
 
 			// 从原始通道读取事件
@@ -236,11 +235,6 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 				if streamEvent, ok := event.(*ClaudeMessageCompletionStreamEvent); ok {
 					// lastEvent = streamEvent
 					eventType := streamEvent.GetEvent()
-
-					// 记录模型名称
-					if streamEvent.Model != "" {
-						modelName = streamEvent.Model
-					}
 
 					// 收集输入和输出token信息
 					if eventType == "message_start" && streamEvent.Message != nil && streamEvent.Message.Usage != nil {
@@ -266,7 +260,7 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 						}
 
 						// 记录使用情况
-						if err := models.CreateUsage(this.db, apiKeyName, apiKeyValue, modelName,
+						if err := models.CreateUsage(this.db, apiKeyName, apiKeyValue, req.Model,
 							inputTokens, outputTokens); err != nil {
 							log.Logger.Errorf("Failed to log API usage: %v", err)
 						} else {

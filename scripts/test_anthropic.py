@@ -1,0 +1,53 @@
+import json
+
+from anthropic import Anthropic
+from anthropic.types import Message
+
+
+client = Anthropic(base_url="http://127.0.0.1:6000", api_key="hello@autel.com")
+
+content = """In the early 19th century, the Bennet family lives at their Longbourn estate, situated near the village of Meryton in Hertfordshire, England. Mrs. Bennet's greatest desire is to marry off her five daughters to secure their futures.
+
+The arrival of Mr. Bingley, a rich bachelor who rents the neighbouring Netherfield estate, gives her hope that one of her daughters might contract a marriage to the advantage, because "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife".
+
+At a ball, the family is introduced to the Netherfield party, including Mr. Bingley, his two sisters and Mr. Darcy, his dearest friend. Mr. Bingley's friendly and cheerful manner earns him popularity among the guests. He appears interested in Jane, the eldest Bennet daughter. Mr. Darcy, reputed to be twice as wealthy as Mr. Bingley, is haughty and aloof, causing a decided dislike of him. He declines to dance with Elizabeth, the second-eldest Bennet daughter, as she is "not handsome enough". Although she jokes about it with her friend, Elizabeth is deeply offended. Despite this first impression, Mr. Darcy secretly begins to find himself drawn to Elizabeth as they continue to encounter each other at social events, appreciating her wit and frankness.
+
+Mr. Collins, the heir to the Longbourn estate, visits the Bennet family with the intention of finding a wife among the five girls under the advice of his patroness Lady Catherine de Bourgh, also revealed to be Mr. Darcy's aunt. He decides to pursue Elizabeth. The Bennet family meets the charming army officer George Wickham, who tells Elizabeth in confidence about Mr. Darcy's unpleasant treatment of him in the past. Elizabeth, blinded by her prejudice toward Mr. Darcy, believes him."""
+
+message: Message = client.messages.create(
+    #model="claude-3-5-haiku-20241022",
+    #model="claude-3-7-sonnet-20250219",
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=8192,
+    # system=[{
+    #     "type":
+    #     "text",
+    #     "text":
+    #     "You are an AI assistant tasked with analyzing literary works. Your goal is to provide insightful commentary on themes, characters, and writing style.\n",
+    # }, {
+    #     "type": "text",
+    #     "text": content,
+    #     "cache_control": {
+    #         "type": "ephemeral"
+    #     }
+    # }],
+    #stream=True,
+    messages=[{
+        "role":
+        "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "Analyze the document"
+            },
+            {
+                "type": "text",
+                "text": content,
+                "cache_control": {
+                    "type": "ephemeral"
+                }
+            },
+        ]
+    }],
+)
+print(json.dumps(message.model_dump(), indent=4, ensure_ascii=False))
