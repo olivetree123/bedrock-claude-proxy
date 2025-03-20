@@ -185,7 +185,7 @@ def list_apikey():
                 stats["total_records"],
                 stats["total_tokens"],
                 stats["total_quota"],
-                stats["total_quota"] * 0.002,
+                round(stats["total_quota"] * 0.002/1000, 3),
             ])
 
         # 使用tabulate打印表格
