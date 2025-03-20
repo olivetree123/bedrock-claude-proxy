@@ -13,7 +13,7 @@ func main() {
 	// 加载 .env 文件
 	err := godotenv.Load()
 	if err != nil {
-		panic("Error loading .env file")
+		log.Logger.Error("Error loading .env file")
 	}
 	conf_path := flag.String("c", "conf.json", "config json file")
 	flag.Parse()

@@ -47,7 +47,7 @@ func NewHttpService(conf *Config) *HTTPService {
 	dbPort := os.Getenv("MYSQL_PORT")
 	dbUser := os.Getenv("MYSQL_USER")
 	dbPassword := os.Getenv("MYSQL_PASSWORD")
-	dbName := os.Getenv("MYSQL_DATABASE")
+	dbName := os.Getenv("MYSQL_DB")
 
 	// 构建DSN (Data Source Name)
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
