@@ -9,9 +9,9 @@ type Usage struct {
 	APIKeyName  string `gorm:"not null;varchar(255)" json:"apikey_name"`
 	APIKeyValue string `gorm:"not null;varchar(255)" json:"apikey_value"`
 	ModelName    string  `gorm:"not null;varchar(255)" json:"model_name"`
-	InputTokens  int     `gorm:"not null;int" json:"input_tokens"`  // 输入token数量
-	OutputTokens int     `gorm:"not null;int" json:"output_tokens"` // 输出token数量
-	Quota        int     `gorm:"not null;int" json:"quota"`          // 额度，乘以0.002就是美元
+	InputTokens  int     `gorm:"not null;int" json:"input_tokens"`     // 输入token数量
+	OutputTokens int     `gorm:"not null;int" json:"output_tokens"`    // 输出token数量
+	Quota        int     `gorm:"not null;int;default:0" json:"quota"`  // 额度，乘以0.002就是美元
 }
 
 func (Usage) TableName() string {
