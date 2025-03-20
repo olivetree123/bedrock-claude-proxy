@@ -22,26 +22,27 @@ RUN go version \
 FROM golang:1.19-alpine
 
 RUN apk add --update libintl \
-    && apk add --no-cache ca-certificates tzdata dumb-init \
+    && apk add --no-cache ca-certificates tzdata dumb-init python3 py3-pip \
     && apk add --virtual build_deps gettext  \
     && cp /usr/bin/envsubst /usr/local/bin/envsubst \
     && apk del build_deps
 
 WORKDIR /app
 
-
 # Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/bedrock-claude-proxy .
 COPY --from=builder /app/webroot .
 COPY --from=builder /app/config.json .
+COPY --from=builder /app/scripts ./scripts
+
+RUN pip3 install -r /app/scripts/requirements.txt
 
 ENV HTTP_LISTEN=0.0.0.0:3000 \
  WEB_ROOT=/app/webroot \
- API_KEY= \
  AWS_BEDROCK_ACCESS_KEY= \
  AWS_BEDROCK_SECRET_KEY= \
  AWS_BEDROCK_REGION= \
- AWS_BEDROCK_MODEL_MAPPINGS="claude-instant-1.2=anthropic.claude-instant-v1,claude-2.0=anthropic.claude-v2,claude-2.1=anthropic.claude-v2:1,claude-3-sonnet-20240229=anthropic.claude-3-sonnet-20240229-v1:0,claude-3-opus-20240229=anthropic.claude-3-opus-20240229-v1:0,claude-3-haiku-20240307=anthropic.claude-3-haiku-20240307-v1:0" \
+ AWS_BEDROCK_MODEL_MAPPINGS="claude-instant-1.2=anthropic.claude-instant-v1,claude-2.0=anthropic.claude-v2,claude-2.1=anthropic.claude-v2:1,claude-3-sonnet-20240229=anthropic.claude-3-sonnet-20240229-v1:0,claude-3-opus-20240229=anthropic.claude-3-opus-20240229-v1:0,claude-3-haiku-20240307=anthropic.claude-3-haiku-20240307-v1:0,claude-3-7-sonnet-20250219=us.anthropic.claude-3-7-sonnet-20250219-v1:0,claude-3-5-sonnet-20241022=anthropic.claude-3-5-sonnet-20241022-v2:0,claude-3-5-haiku-20241022:anthropic.claude-3-5-haiku-20241022-v1:0" \
  AWS_BEDROCK_ANTHROPIC_VERSION_MAPPINGS="2023-06-01=bedrock-2023-05-31" \
  AWS_BEDROCK_ANTHROPIC_DEFAULT_MODEL=anthropic.claude-v2 \
  AWS_BEDROCK_ANTHROPIC_DEFAULT_VERSION=bedrock-2023-05-31 \
