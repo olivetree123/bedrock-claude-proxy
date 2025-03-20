@@ -184,11 +184,12 @@ def list_apikey():
                 created_at,
                 stats["total_records"],
                 stats["total_tokens"],
-                stats["total_quota"]
+                stats["total_quota"],
+                stats["total_quota"] * 0.002,
             ])
 
         # 使用tabulate打印表格
-        headers = ["ID", "名称", "密钥", "创建时间", "请求次数", "总Token数", "总配额"]
+        headers = ["ID", "名称", "密钥", "创建时间", "请求次数", "总Token数", "消费总额度", "消费美元"]
         click.echo(tabulate(table_data, headers=headers, tablefmt="grid"))
     except Exception as e:
         click.echo(f"获取API密钥列表失败: {e}", err=True)

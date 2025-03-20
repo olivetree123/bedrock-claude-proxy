@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 	"gorm.io/gorm"
@@ -20,9 +21,10 @@ type CreateAPIKeyRequest struct {
 
 // API密钥响应
 type APIKeyResponse struct {
-	ID    uint   `json:"id"`
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	ID        uint      `json:"id"`
+	Name      string    `json:"name"`
+	Value     string    `json:"value"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // 列表响应
@@ -87,9 +89,10 @@ func CreateAPIKey(db *gorm.DB) http.HandlerFunc {
 		// 返回创建的API密钥
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(APIKeyResponse{
-			ID:    apiKey.ID,
-			Name:  apiKey.Name,
-			Value: apiKey.Value,
+			ID:        apiKey.ID,
+			Name:      apiKey.Name,
+			Value:     apiKey.Value,
+			CreatedAt: apiKey.CreatedAt,
 		})
 
 		log.Logger.Infof("API key created: %s", req.Name)
