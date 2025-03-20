@@ -229,11 +229,12 @@ def list_usage(page, page_size, apikey, model, start, end, format, output):
                     item.get("model_name", ""),
                     item.get("input_tokens", 0),
                     item.get("output_tokens", 0),
+                    item.get("quota", 0),
                     created_at
                 ])
 
             # 使用tabulate打印表格
-            headers = ["ID", "API密钥", "模型", "输入令牌", "输出令牌", "创建时间"]
+            headers = ["ID", "密钥名称", "模型", "输入令牌", "输出令牌", "消费额度", "创建时间"]
             click.echo(f"总记录数: {total} (第{page}页，每页{page_size}条)")
             click.echo(tabulate(table_data, headers=headers, tablefmt="grid"))
     except Exception as e:
