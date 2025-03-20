@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 
 	log "bedrock-claude-proxy/log"
 
 	"github.com/gorilla/mux"
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -41,16 +42,23 @@ type APIStandardError struct {
 }
 
 func NewHttpService(conf *Config) *HTTPService {
-	// 初始化数据库
-	dbPath := conf.DBPath
-	if dbPath == "" {
-		dbPath = "bedrock.db"
-	}
+	// 直接从环境变量读取MySQL连接信息
+	dbHost := os.Getenv("MYSQL_HOST")
+	dbPort := os.Getenv("MYSQL_PORT")
+	dbUser := os.Getenv("MYSQL_USER")
+	dbPassword := os.Getenv("MYSQL_PASSWORD")
+	dbName := os.Getenv("MYSQL_DATABASE")
 
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	// 构建DSN (Data Source Name)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		dbUser, dbPassword, dbHost, dbPort, dbName)
+
+	// 连接MySQL数据库
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Logger.Fatalf("Failed to connect to database: %v", err)
+		log.Logger.Fatalf("Failed to connect to MySQL database: %v", err)
 	}
+	log.Logger.Infof("Connected to MySQL database: %s@%s:%s/%s", dbUser, dbHost, dbPort, dbName)
 
 	// 初始化数据库模型和默认数据
 	if err := InitDB(db); err != nil {

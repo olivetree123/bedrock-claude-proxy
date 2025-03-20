@@ -29,13 +29,14 @@ RUN apk add --update libintl \
 
 WORKDIR /app
 
+COPY scripts /app/scripts
+
+RUN pip3 install -r /app/scripts/requirements.txt
+
 # Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/bedrock-claude-proxy .
 COPY --from=builder /app/webroot .
 COPY --from=builder /app/config.json .
-COPY --from=builder /app/scripts ./scripts
-
-RUN pip3 install -r /app/scripts/requirements.txt
 
 ENV HTTP_LISTEN=0.0.0.0:3000 \
  WEB_ROOT=/app/webroot \
@@ -46,6 +47,11 @@ ENV HTTP_LISTEN=0.0.0.0:3000 \
  AWS_BEDROCK_ANTHROPIC_VERSION_MAPPINGS="2023-06-01=bedrock-2023-05-31" \
  AWS_BEDROCK_ANTHROPIC_DEFAULT_MODEL=anthropic.claude-v2 \
  AWS_BEDROCK_ANTHROPIC_DEFAULT_VERSION=bedrock-2023-05-31 \
+ DB_HOST=mysql \
+ DB_PORT=3306 \
+ DB_USER=bedrock \
+ DB_PASSWORD=bedrock_password \
+ DB_NAME=bedrock \
  LOG_LEVEL=INFO
 
 EXPOSE 3000
