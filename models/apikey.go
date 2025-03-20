@@ -6,8 +6,8 @@ import (
 
 type APIKey struct {
 	gorm.Model
-	Name  string `gorm:"not null;unique;varchar(255)" json:"name"`
-	Value string `gorm:"not null;unique;varchar(255)" json:"value"`
+	Name  string `gorm:"column:name;not null;unique;varchar(255)" json:"name"`
+	Value string `gorm:"column:value;not null;unique;varchar(255)" json:"value"`
 }
 
 func (APIKey) TableName() string {

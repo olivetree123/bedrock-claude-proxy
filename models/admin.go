@@ -6,8 +6,8 @@ import (
 
 type Admin struct {
 	gorm.Model
-	Username string `gorm:"not null;varchar(255)" json:"username"`
-	Password string `gorm:"not null;varchar(255)" json:"password"`
+	Username string `column:username;gorm:"not null;varchar(255)" json:"username"`
+	Password string `column:password;gorm:"not null;varchar(255)" json:"password"`
 }
 
 func (Admin) TableName() string {
