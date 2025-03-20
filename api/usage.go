@@ -30,6 +30,7 @@ type UsageItem struct {
 	ModelName    string    `json:"model_name"`
 	InputTokens  int       `json:"input_tokens"`
 	OutputTokens int       `json:"output_tokens"`
+	Quota        int       `json:"quota"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -120,6 +121,7 @@ func ListUsage(db *gorm.DB) http.HandlerFunc {
 				ModelName:    usage.ModelName,
 				InputTokens:  usage.InputTokens,
 				OutputTokens: usage.OutputTokens,
+				Quota:        usage.Quota,
 				CreatedAt:    usage.CreatedAt,
 			}
 		}

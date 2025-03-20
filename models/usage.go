@@ -19,7 +19,7 @@ func (Usage) TableName() string {
 }
 
 func CreateUsage(db *gorm.DB, apiKeyName, apiKeyValue, modelName string, inputTokens, outputTokens int, quota int) error {
-	log := Usage{
+	usage := Usage{
 		APIKeyName:  apiKeyName,
 		APIKeyValue:  apiKeyValue,
 		ModelName:    modelName,
@@ -28,6 +28,5 @@ func CreateUsage(db *gorm.DB, apiKeyName, apiKeyValue, modelName string, inputTo
 		Quota:        quota,
 	}
 
-	result := db.Create(&log)
-	return result.Error
+	return db.Create(&usage).Error
 }
