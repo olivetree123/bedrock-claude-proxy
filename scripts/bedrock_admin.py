@@ -143,19 +143,52 @@ def list_apikey():
             click.echo("没有找到API密钥")
             return
 
+        # 获取每个API密钥的使用情况
+        usage_stats = {}
+        for apikey in apikeys:
+            # 使用新的API端点直接获取配额统计信息
+            quota_url = f"{config.url}/admin/apikey/quota"
+            params = {
+                "name": apikey.get("name")
+            }
+
+            try:
+                quota_response = requests.get(quota_url, headers=headers, params=params)
+                quota_response.raise_for_status()
+                quota_data = quota_response.json()
+
+                usage_stats[apikey.get("id")] = {
+                    "total_quota": quota_data.get("total_quota", 0),
+                    "total_tokens": quota_data.get("total_tokens", 0),
+                    "total_records": quota_data.get("total_requests", 0)
+                }
+            except Exception as e:
+                click.echo(f"获取API密钥 {apikey.get('name')} 的使用情况失败: {e}", err=True)
+                usage_stats[apikey.get("id")] = {
+                    "total_quota": 0,
+                    "total_tokens": 0,
+                    "total_records": 0
+                }
+
         # 准备表格数据
         table_data = []
         for apikey in apikeys:
             created_at = apikey.get("created_at", "").replace("T", " ").replace("Z", "")
+            apikey_id = apikey.get("id", "")
+            stats = usage_stats.get(apikey_id, {"total_quota": 0, "total_tokens": 0, "total_records": 0})
+
             table_data.append([
-                apikey.get("id", ""),
+                apikey_id,
                 apikey.get("name", ""),
                 apikey.get("value", ""),
-                created_at
+                created_at,
+                stats["total_records"],
+                stats["total_tokens"],
+                stats["total_quota"]
             ])
 
         # 使用tabulate打印表格
-        headers = ["ID", "名称", "密钥", "创建时间"]
+        headers = ["ID", "名称", "密钥", "创建时间", "请求次数", "总Token数", "总配额"]
         click.echo(tabulate(table_data, headers=headers, tablefmt="grid"))
     except Exception as e:
         click.echo(f"获取API密钥列表失败: {e}", err=True)
@@ -240,6 +273,35 @@ def list_usage(page, page_size, apikey, model, start, end, format, output):
     except Exception as e:
         click.echo(f"获取使用记录失败: {e}", err=True)
 
+
+@cli.command()
+@check_auth
+@click.option('--name', '-n', required=True, help='API密钥名称')
+def get_apikey_quota(name):
+    """获取API密钥的配额使用统计"""
+    url = f"{config.url}/admin/apikey/quota"
+    headers = {
+        "Authorization": f"Bearer {config.token}",
+        "Content-Type": "application/json"
+    }
+    params = {"name": name}
+
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+
+        data = response.json()
+
+        # 打印统计信息
+        click.echo(click.style(f"API密钥 '{name}' 的使用统计", fg="blue", bold=True))
+        click.echo(f"总请求次数: {data.get('total_requests', 0)}")
+        click.echo(f"总输入Token: {data.get('total_input_tokens', 0)}")
+        click.echo(f"总输出Token: {data.get('total_output_tokens', 0)}")
+        click.echo(f"总Token数量: {data.get('total_tokens', 0)}")
+        click.echo(f"总配额消耗: {data.get('total_quota', 0)}")
+
+    except Exception as e:
+        click.echo(f"获取API密钥配额统计失败: {e}", err=True)
 
 
 if __name__ == "__main__":

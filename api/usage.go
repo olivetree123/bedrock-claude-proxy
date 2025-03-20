@@ -140,3 +140,66 @@ func ListUsage(db *gorm.DB) http.HandlerFunc {
 		}
 	}
 }
+
+// GetAPIKeyQuota 获取特定API密钥的配额统计信息
+func GetAPIKeyQuota(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 检查请求方法
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// 获取要查询的API密钥名称
+		apiKeyName := r.URL.Query().Get("name")
+		if apiKeyName == "" {
+			http.Error(w, "Missing API key name", http.StatusBadRequest)
+			return
+		}
+
+		// 查询该API密钥的使用记录
+		var count int64
+
+		// 计算总次数
+		if err := db.Model(&models.Usage{}).Where("apikey_name = ?", apiKeyName).Count(&count).Error; err != nil {
+			log.Logger.Errorf("Failed to count usage records: %v", err)
+			http.Error(w, "Failed to query database", http.StatusInternalServerError)
+			return
+		}
+
+		// 计算总使用量
+		type Result struct {
+			TotalInput  int64 `json:"total_input"`
+			TotalOutput int64 `json:"total_output"`
+			TotalQuota  int64 `json:"total_quota"`
+		}
+
+		var result Result
+		if err := db.Model(&models.Usage{}).
+			Select("SUM(input_tokens) as total_input, SUM(output_tokens) as total_output, SUM(quota) as total_quota").
+			Where("apikey_name = ?", apiKeyName).
+			Scan(&result).Error; err != nil {
+			log.Logger.Errorf("Failed to sum usage records: %v", err)
+			http.Error(w, "Failed to query database", http.StatusInternalServerError)
+			return
+		}
+
+		// 构建响应数据
+		response := map[string]interface{}{
+			"apikey_name":        apiKeyName,
+			"total_requests":     count,
+			"total_input_tokens": result.TotalInput,
+			"total_output_tokens": result.TotalOutput,
+			"total_tokens":       result.TotalInput + result.TotalOutput,
+			"total_quota":        result.TotalQuota,
+		}
+
+		// 返回JSON响应
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Logger.Errorf("Failed to encode response: %v", err)
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
+	}
+}

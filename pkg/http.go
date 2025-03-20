@@ -424,6 +424,11 @@ func (this *HTTPService) ListUsage(w http.ResponseWriter, r *http.Request) {
 	handler(w, r)
 }
 
+func (this *HTTPService) GetAPIKeyQuota(w http.ResponseWriter, r *http.Request) {
+	handler := api.GetAPIKeyQuota(this.db)
+	handler(w, r)
+}
+
 func (this *HTTPService) AdminMiddleware(next http.Handler) http.Handler {
 	return api.AdminMiddleware(this.db)(next)
 }
@@ -441,6 +446,7 @@ func (this *HTTPService) Start() {
 	adminRouter.HandleFunc("/apikey/create", this.CreateAPIKey)
 	adminRouter.HandleFunc("/apikey/{id}/delete", this.DeleteAPIKey)
 	adminRouter.HandleFunc("/apikey/list", this.ListAPIKeys)
+	adminRouter.HandleFunc("/apikey/quota", this.GetAPIKeyQuota)
 	adminRouter.HandleFunc("/usage/list", this.ListUsage)
 
 	// 需要 API Key 的路由
