@@ -123,9 +123,10 @@ func ListAPIKeys(db *gorm.DB) http.HandlerFunc {
 		}
 		for i, key := range apiKeys {
 			response.APIKeys[i] = APIKeyResponse{
-				ID:    key.ID,
-				Name:  key.Name,
-				Value: key.Value,
+				ID:        key.ID,
+				Name:      key.Name,
+				Value:     key.Value,
+				CreatedAt: key.CreatedAt,
 			}
 		}
 
