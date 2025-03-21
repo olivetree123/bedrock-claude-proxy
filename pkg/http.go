@@ -273,7 +273,7 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 						}
 
 						// 记录使用情况
-						quota := int((float64(inputTokens) * ModelMetaMap[req.Model].ModelRatio + float64(outputTokens)*ModelMetaMap[req.Model].CompletionRatio))
+						quota := int(float64(inputTokens)*ModelMetaMap[req.Model].ModelRatio + float64(outputTokens)*ModelMetaMap[req.Model].CompletionRatio)
 						if err := models.CreateUsage(this.db, apiKeyName, apiKeyValue, req.Model,
 							inputTokens, outputTokens, quota); err != nil {
 							log.Logger.Errorf("Failed to log API usage: %v", err)
@@ -308,7 +308,7 @@ func (this *HTTPService) HandleMessageComplete(writer http.ResponseWriter, reque
 		}
 
 		// 记录使用情况
-		quota := int((float64(resp.Usage.InputTokens) * ModelMetaMap[resp.Model].ModelRatio + float64(resp.Usage.OutputTokens)*ModelMetaMap[resp.Model].CompletionRatio))
+		quota := int(float64(resp.Usage.InputTokens)*ModelMetaMap[resp.Model].ModelRatio + float64(resp.Usage.OutputTokens)*ModelMetaMap[resp.Model].CompletionRatio)
 		if err := models.CreateUsage(this.db, apiKeyName, apiKeyValue, resp.Model,
 			resp.Usage.InputTokens, resp.Usage.OutputTokens, quota); err != nil {
 			log.Logger.Errorf("Failed to log API usage: %v", err)
