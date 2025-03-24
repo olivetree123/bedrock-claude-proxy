@@ -305,5 +305,45 @@ def get_apikey_quota(name):
         click.echo(f"获取API密钥配额统计失败: {e}", err=True)
 
 
+@cli.command()
+@check_auth
+@click.option('--name', '-n', required=True, help='API密钥名称')
+def enable_apikey(name):
+    """启用API密钥"""
+    url = f"{config.url}/admin/apikey/enable"
+    headers = {
+        "Authorization": f"Bearer {config.token}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json={"name": name})
+        response.raise_for_status()
+
+        click.echo(f"API密钥启用成功!")
+    except Exception as e:
+        click.echo(f"启用API密钥失败: {e}", err=True)
+
+
+@cli.command()
+@check_auth
+@click.option('--name', '-n', required=True, help='API密钥名称')
+def disable_apikey(name):
+    """禁用API密钥"""
+    url = f"{config.url}/admin/apikey/disable"
+    headers = {
+        "Authorization": f"Bearer {config.token}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json={"name": name})
+        response.raise_for_status()
+
+        click.echo(f"API密钥禁用成功!")
+    except Exception as e:
+        click.echo(f"禁用API密钥失败: {e}", err=True)
+
+
 if __name__ == "__main__":
     cli()

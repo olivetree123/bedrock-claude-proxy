@@ -433,6 +433,21 @@ func (this *HTTPService) AdminMiddleware(next http.Handler) http.Handler {
 	return api.AdminMiddleware(this.db)(next)
 }
 
+func (this *HTTPService) EnableAPIKey(w http.ResponseWriter, r *http.Request) {
+	handler := api.EnableAPIKey(this.db)
+	handler(w, r)
+}
+
+func (this *HTTPService) DisableAPIKey(w http.ResponseWriter, r *http.Request) {
+	handler := api.DisableAPIKey(this.db)
+	handler(w, r)
+
+	// 清空缓存
+	this.cacheMutex.Lock()
+	this.apiKeyCache = make(map[string]*models.APIKey)
+	this.cacheMutex.Unlock()
+}
+
 func (this *HTTPService) Start() {
 	rHandler := mux.NewRouter()
 
@@ -447,6 +462,8 @@ func (this *HTTPService) Start() {
 	adminRouter.HandleFunc("/apikey/{id}/delete", this.DeleteAPIKey)
 	adminRouter.HandleFunc("/apikey/list", this.ListAPIKeys)
 	adminRouter.HandleFunc("/apikey/quota", this.GetAPIKeyQuota)
+	adminRouter.HandleFunc("/apikey/enable", this.EnableAPIKey)
+	adminRouter.HandleFunc("/apikey/disable", this.DisableAPIKey)
 	adminRouter.HandleFunc("/usage/list", this.ListUsage)
 
 	// 需要 API Key 的路由

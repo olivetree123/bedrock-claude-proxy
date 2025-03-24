@@ -182,3 +182,85 @@ func generateAPIKey() (string, error) {
 	}
 	return fmt.Sprintf("bk-%s", hex.EncodeToString(bytes)), nil
 }
+
+// EnableAPIKey 启用API密钥
+func EnableAPIKey(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 只接受POST请求
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// 解析请求体
+		var req struct {
+			Name string `json:"name"`
+		}
+		err := json.NewDecoder(r.Body).Decode(&req)
+		if err != nil {
+			log.Logger.Errorf("Failed to decode request: %v", err)
+			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+
+		// 验证名称
+		if req.Name == "" {
+			http.Error(w, "API key name is required", http.StatusBadRequest)
+			return
+		}
+
+		// 更新API密钥状态为启用
+		if err := models.UpdateAPIKeyStatusByName(db, req.Name, true); err != nil {
+			log.Logger.Errorf("Failed to enable API key: %v", err)
+			http.Error(w, "Failed to enable API key", http.StatusInternalServerError)
+			return
+		}
+
+		// 返回成功
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message": "API key enabled successfully"}`))
+
+		log.Logger.Infof("API key enabled: %s", req.Name)
+	}
+}
+
+// DisableAPIKey 禁用API密钥
+func DisableAPIKey(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 只接受POST请求
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// 解析请求体
+		var req struct {
+			Name string `json:"name"`
+		}
+		err := json.NewDecoder(r.Body).Decode(&req)
+		if err != nil {
+			log.Logger.Errorf("Failed to decode request: %v", err)
+			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+
+		// 验证名称
+		if req.Name == "" {
+			http.Error(w, "API key name is required", http.StatusBadRequest)
+			return
+		}
+
+		// 更新API密钥状态为禁用
+		if err := models.UpdateAPIKeyStatusByName(db, req.Name, false); err != nil {
+			log.Logger.Errorf("Failed to disable API key: %v", err)
+			http.Error(w, "Failed to disable API key", http.StatusInternalServerError)
+			return
+		}
+
+		// 返回成功
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message": "API key disabled successfully"}`))
+
+		log.Logger.Infof("API key disabled: %s", req.Name)
+	}
+}
